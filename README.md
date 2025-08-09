@@ -1,6 +1,6 @@
 # AudioSeparation
 # 1. 说明
-这是基于开源的 FunASR 实现的说话人分离的 gradio webui 项目\
+这是基于开源的 AudioSeparationGUI-main(https://github.com/lukeewin/AudioSeparationGUI) 实现的说话人分离的 gradio webui 项目\
 要求 python version >= 3.8 \
 支持运行在 Windows、MacOS、Linux 系统 \
 热词功能，在当前路径下的 hotwords.txt 中写入热词，每个热词一行
