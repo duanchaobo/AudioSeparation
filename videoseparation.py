@@ -29,8 +29,7 @@ spk_model_path = os.path.join(home_directory, ".cache", "modelscope", "hub", "mo
 spk_model_revision = "v2.0.4"
 hotword_file = "./hotwords.txt"
 
-# 支持的音视频格式
-support_audio_format = ['.mp3', '.m4a', '.aac', '.ogg', '.wav', '.flac', '.wma', '.aif']
+# 只支持视频格式
 support_video_format = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.ts']
 support_subtitle_format = ['.srt']
 
@@ -131,8 +130,8 @@ def to_milliseconds(time_str):
         print(f"时间转换错误: {time_str} - {str(e)}")
         return 0
 
-def find_audio_files(path):
-    """查找指定路径下的所有音频/视频文件"""
+def find_video_files(path):
+    """查找指定路径下的所有视频文件"""
     if not os.path.exists(path):
         return []
     
@@ -141,7 +140,7 @@ def find_audio_files(path):
     # 如果是文件，直接返回
     if os.path.isfile(path):
         _, ext = os.path.splitext(path)
-        if ext.lower() in support_audio_format + support_video_format:
+        if ext.lower() in support_video_format:
             return [path]
         return []
     
@@ -149,7 +148,7 @@ def find_audio_files(path):
     for root, _, filenames in os.walk(path):
         for filename in filenames:
             _, ext = os.path.splitext(filename)
-            if ext.lower() in support_audio_format + support_video_format:
+            if ext.lower() in support_video_format:
                 files.append(os.path.join(root, filename))
     
     return files
@@ -314,21 +313,21 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
         return "错误：模型仍在加载中，请稍后再试"
     
     if not file_paths:
-        return "请指定音频文件或文件夹路径"
+        return "请指定视频文件或文件夹路径"
     
     if not save_path:
         return "请指定保存路径"
     
-    # 收集所有要处理的文件
+    # 收集所有要处理的视频文件
     all_files = []
     for path in file_paths.split(';'):
         path = path.strip()
         if path:
-            found_files = find_audio_files(path)
+            found_files = find_video_files(path)
             all_files.extend(found_files)
     
     if not all_files:
-        return f"未找到任何支持的音频/视频文件。支持的格式: {', '.join(support_audio_format + support_video_format)}"
+        return f"未找到任何支持的视频文件。支持的格式: {', '.join(support_video_format)}"
     
     # 处理上传的字幕文件
     subtitle_contents = []
@@ -347,19 +346,19 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
     results = []
     min_duration_ms = min_duration * 1000  # 转换为毫秒
     
-    for idx, audio_path in enumerate(all_files):
+    for idx, video_path in enumerate(all_files):
         try:
             # 处理进度更新
-            progress(idx / total_files, f"处理文件中: {os.path.basename(audio_path)}")
+            progress(idx / total_files, f"处理文件中: {os.path.basename(video_path)}")
             
-            audio_name = os.path.splitext(os.path.basename(audio_path))[0]
-            _, audio_extension = os.path.splitext(audio_path)
-            speaker_audios = {}  # 每个说话人作为 key，value 为列表，列表中为当前说话人对应的每个音频片段
+            video_name = os.path.splitext(os.path.basename(video_path))[0]
+            _, video_extension = os.path.splitext(video_path)
+            speaker_videos = {}  # 每个说话人作为 key，value 为列表，列表中为当前说话人对应的每个视频片段
             speaker_valid_segments = {}  # 记录有效片段数量
             speaker_discarded_segments = {}  # 记录舍弃片段数量
             timing_adjustments = []  # 记录时间调整信息
             
-            # 音频预处理
+            # 视频预处理
             try:
                 # 尝试为当前媒体文件匹配字幕
                 matched_subtitles = []
@@ -368,31 +367,31 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                     for content in subtitle_contents:
                         subtitles = parse_srt_content(content)
                         # 简单的匹配：检查字幕中是否包含媒体文件名
-                        if any(audio_name.lower() in sub['text'].lower() for sub in subtitles):
+                        if any(video_name.lower() in sub['text'].lower() for sub in subtitles):
                             matched_subtitles = subtitles
-                            results.append(f"✅ 使用匹配的字幕内容 (基于文件名: {audio_name})")
+                            results.append(f"✅ 使用匹配的字幕内容 (基于文件名: {video_name})")
                             break
                     
                     # 如果没有精确匹配，使用第一个字幕文件
                     if not matched_subtitles:
                         matched_subtitles = parse_srt_content(subtitle_contents[0])
-                        results.append(f"ℹ️ 使用第一个字幕文件内容")
+                        results.append(f"ℹℹ️ 使用第一个字幕文件内容")
                 
-                # 获取音频总时长
+                # 获取视频总时长
                 try:
-                    probe = ffmpeg.probe(audio_path)
+                    probe = ffmpeg.probe(video_path)
                     audio_info = next((stream for stream in probe['streams'] if stream['codec_type'] == 'audio'), None)
                     if audio_info:
                         total_duration_ms = float(audio_info['duration']) * 1000
                     else:
                         # 如果没有音频流，可能是纯视频文件
                         total_duration_ms = 0
-                        results.append(f"⚠️ {audio_path} 未检测到音频流")
+                        results.append(f"⚠️ {video_path} 未检测到音频流")
                 except:
                     total_duration_ms = 0
                 
                 audio_bytes, _ = (
-                    ffmpeg.input(audio_path, threads=0, hwaccel='cuda' if device == "cuda" else None)
+                    ffmpeg.input(video_path, threads=0, hwaccel='cuda' if device == "cuda" else None)
                     .output("-", format="wav", acodec="pcm_s16le", ac=1, ar=16000)
                     .run(cmd=["ffmpeg", "-nostdin"], capture_stdout=True, capture_stderr=True)
                 )
@@ -411,7 +410,7 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                 asr_result_text = rec_result['text']
                 
                 if asr_result_text == '':
-                    results.append(f"{audio_name}: 未检测到语音内容")
+                    results.append(f"{video_name}: 未检测到语音内容")
                     continue
                 
                 # 处理ASR句子信息
@@ -438,7 +437,7 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                     speaker_discarded_segments[spk] = 0
                 
                 # 保存对齐后的时间戳信息
-                timestamp_file = os.path.join(final_save_path, audio_name, "timestamps.json")
+                timestamp_file = os.path.join(final_save_path, video_name, "timestamps.json")
                 os.makedirs(os.path.dirname(timestamp_file), exist_ok=True)
                 with open(timestamp_file, 'w', encoding='utf-8') as f:
                     json.dump({
@@ -447,7 +446,7 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                         "aligned": aligned_sentences
                     }, f, ensure_ascii=False, indent=2)
                 
-                # 剪切音频或视频片段
+                # 剪切视频片段
                 for i, sentence in enumerate(aligned_sentences):
                     stn_txt = sentence['text']
                     start_ms = sentence['start']
@@ -464,7 +463,7 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                         original_start = start_ms
                         original_end = end_ms
                         start_ms, end_ms = detect_actual_speech(
-                            audio_path, start_ms, end_ms, 
+                            video_path, start_ms, end_ms, 
                             silence_threshold=silence_threshold
                         )
                         
@@ -484,59 +483,49 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                     end_str = to_date(end_ms)
                     
                     # 根据文件名和 spk 创建目录
-                    spk_save_path = os.path.join(final_save_path, audio_name, str(spk))
+                    spk_save_path = os.path.join(final_save_path, video_name, str(spk))
                     os.makedirs(spk_save_path, exist_ok=True)
                     
                     # 文本记录
-                    spk_txt_file = os.path.join(final_save_path, audio_name, f'spk{spk}.txt')
+                    spk_txt_file = os.path.join(final_save_path, video_name, f'spk{spk}.txt')
                     with open(spk_txt_file, 'a', encoding='utf-8') as f:
                         f.write(f"{start_str} --> {end_str}\n{stn_txt}\n\n")
                     
-                    # 处理音视频片段
-                    final_save_file = os.path.join(spk_save_path, f"{i}{audio_extension}")
+                    # 处理视频片段
+                    final_save_file = os.path.join(spk_save_path, f"{i}.mp4")
                     
                     try:
-                        if audio_extension.lower() in support_audio_format:
-                            (
-                                ffmpeg.input(audio_path, threads=0, ss=start_ms/1000, to=end_ms/1000, hwaccel='cuda' if device == "cuda" else None)
-                                .output(final_save_file)
-                                .run(cmd=["ffmpeg", "-nostdin"], overwrite_output=True, capture_stdout=True, capture_stderr=True)
-                            )
-                        elif audio_extension.lower() in support_video_format:
-                            final_save_file = os.path.join(spk_save_path, f"{i}.mp4")
-                            (
-                                ffmpeg.input(audio_path, threads=0, ss=start_ms/1000, to=end_ms/1000, hwaccel='cuda' if device == "cuda" else None)
-                                .output(final_save_file, vcodec='libx264', crf=23, acodec='aac', ab='128k')
-                                .run(cmd=["ffmpeg", "-nostdin"], overwrite_output=True, capture_stdout=True, capture_stderr=True)
-                            )
-                        else:
-                            results.append(f"{audio_name}: 不支持的文件格式 {audio_extension}")
+                        (
+                            ffmpeg.input(video_path, threads=0, ss=start_ms/1000, to=end_ms/1000, hwaccel='cuda' if device == "cuda" else None)
+                            .output(final_save_file, vcodec='libx264', crf=23, acodec='aac', ab='128k')
+                            .run(cmd=["ffmpeg", "-nostdin"], overwrite_output=True, capture_stdout=True, capture_stderr=True)
+                        )
                     except ffmpeg.Error as e:
                         error_msg = e.stderr.decode('utf-8') if e.stderr else str(e)
-                        results.append(f"{audio_name}: 剪切错误 - {error_msg}")
+                        results.append(f"{video_name}: 剪切错误 - {error_msg}")
                         continue
                     
                     # 记录该片段为有效片段
                     speaker_valid_segments[spk] += 1
                     
-                    # 记录说话人和对应的音频片段
-                    if spk not in speaker_audios:
-                        speaker_audios[spk] = []
-                    speaker_audios[spk].append({
+                    # 记录说话人和对应的视频片段
+                    if spk not in speaker_videos:
+                        speaker_videos[spk] = []
+                    speaker_videos[spk].append({
                         'file': final_save_file, 
-                        'audio_name': audio_name,
+                        'video_name': video_name,
                         'start': start_ms,
                         'end': end_ms
                     })
                 
-                # 合并每个说话人的音频片段（增加时长过滤）
-                for spk, audio_segments in speaker_audios.items():
-                    if not audio_segments:
+                # 合并每个说话人的视频片段（增加时长过滤）
+                for spk, video_segments in speaker_videos.items():
+                    if not video_segments:
                         continue
                     
                     # 计算说话人总时长
                     total_duration = 0
-                    for seg in audio_segments:
+                    for seg in video_segments:
                         total_duration += (seg['end'] - seg['start'])
                     
                     # 转换为秒
@@ -547,21 +536,21 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                         results.append(f"跳过说话人 {spk}，总时长 {total_duration_sec:.1f}秒不足{min_duration}秒")
                         continue
                     
-                    # 修改输出格式为WAV
-                    output_file = os.path.join(final_save_path, audio_name, f"{spk}.wav")
+                    # 输出合并视频文件（MP4格式）
+                    output_file = os.path.join(final_save_path, video_name, f"{spk}.mp4")
                     
                     # 构建合并命令
                     try:
                         # 创建文件列表
                         concat_list = os.path.join(spk_save_path, "concat_list.txt")
                         with open(concat_list, 'w', encoding='utf-8') as f:
-                            for seg in audio_segments:
+                            for seg in video_segments:
                                 f.write(f"file '{seg['file']}'\n")
                         
-                        # 使用ffmpeg合并音频
+                        # 使用ffmpeg合并视频
                         (
                             ffmpeg.input(concat_list, format='concat', safe=0)
-                            .output(output_file, acodec='pcm_s16le', ac=1, ar=16000)
+                            .output(output_file, c='copy')
                             .run(cmd=["ffmpeg", "-nostdin"], overwrite_output=True)
                         )
                         
@@ -572,11 +561,11 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                         discarded_info = f" (舍弃{speaker_discarded_segments[spk]}个空文本片段)"
                         results.append(f"✅ 合并完成: {os.path.basename(output_file)}，时长 {total_duration_sec:.1f}秒{discarded_info}")
                     except Exception as e:
-                        results.append(f"❌ 合并错误: {str(e)}")
+                        results.append(f"❌❌ 合并错误: {str(e)}")
                 
                 # 添加时间调整报告
                 if vad_refinement and timing_adjustments:
-                    results.append("\n🔧 时间戳调整报告:")
+                    results.append("\n🔧🔧 时间戳调整报告:")
                     total_start_diff = 0
                     total_end_diff = 0
                     
@@ -599,35 +588,35 @@ def trans(file_paths, save_path, subtitle_files, threshold=10, min_duration=60, 
                 
                 # 添加舍弃总结信息
                 for spk in set([s["spk"] for s in aligned_sentences]):
-                    if spk in speaker_audios:
+                    if spk in speaker_videos:
                         summary = f"说话人 {spk}: 保留{speaker_valid_segments[spk]}片段，舍弃{speaker_discarded_segments[spk]}个空文本片段"
                         results.append(summary)
                 
-                results.append(f"✅ {audio_name}: 处理完成，保存至 {os.path.join(final_save_path, audio_name)}")
+                results.append(f"✅ {video_name}: 处理完成，保存至 {os.path.join(final_save_path, video_name)}")
                 
             except Exception as e:
-                results.append(f"❌ {audio_name}: 处理失败 - {str(e)}")
+                results.append(f"❌❌ {video_name}: 处理失败 - {str(e)}")
                 import traceback
                 traceback.print_exc()
             
         except Exception as e:
-            results.append(f"❌ 文件处理异常: {str(e)}")
+            results.append(f"❌❌ 文件处理异常: {str(e)}")
             import traceback
             traceback.print_exc()
     
     return "\n".join(results)
 
 # Gradio UI
-with gr.Blocks(title="说话人分离工具") as demo:
-    gr.Markdown("## 🎙🎙🎙️ 音频说话人分离工具")
-    gr.Markdown("直接指定实例上的音频文件或文件夹路径，系统将自动分离不同说话人的声音片段并舍弃无人声BGM")
+with gr.Blocks(title="视频说话人分离工具") as demo:
+    gr.Markdown("## 🎬 视频说话人分离工具")
+    gr.Markdown("处理视频文件并分离不同说话人的片段，输出分角色的合并视频")
     
     with gr.Row():
         with gr.Column():
             gr.Markdown("### 输入设置")
             file_paths = gr.Textbox(
-                label="文件或文件夹路径",
-                placeholder="输入音频文件路径或包含音频的文件夹路径（多个用分号;分隔）",
+                label="视频文件或文件夹路径",
+                placeholder="输入视频文件路径或包含视频的文件夹路径（多个用分号;分隔）",
                 value="/root/autodl-tmp/input"
             )
             
@@ -647,9 +636,9 @@ with gr.Blocks(title="说话人分离工具") as demo:
             with gr.Row():
                 example_files = gr.Examples(
                     examples=[
-                        ["/root/autodl-tmp/audio1.mp3"],
-                        ["/root/autodl-tmp/audio_folder"],
-                        ["/root/autodl-tmp/audio1.wav;/root/autodl-tmp/audio2.mp4"]
+                        ["/root/autodl-tmp/video1.mp4"],
+                        ["/root/autodl-tmp/video_folder"],
+                        ["/root/autodl-tmp/video1.mp4;/root/autodl-tmp/video2.mkv"]
                     ],
                     inputs=[file_paths],
                     label="示例路径"
@@ -701,27 +690,26 @@ with gr.Blocks(title="说话人分离工具") as demo:
                 gr.Markdown("""
                 - 支持直接输入文件路径或文件夹路径
                 - 多个路径用分号(;)分隔
-                - 支持的音频格式: .mp3, .wav, .aac, .flac, .ogg, .m4a, .wma, .aif
                 - 支持的视频格式: .mp4, .avi, .mov, .mkv, .flv, .ts
                 - 支持的字幕格式: .srt
-                - 文件夹路径会自动搜索所有支持的音视频文件
+                - 文件夹路径会自动搜索所有支持的视频文件
                 """)
         
         with gr.Column():
             output_result = gr.Textbox(label="处理结果", lines=20, interactive=False)
             gr.Markdown("### 使用说明")
             gr.Markdown("""
-            **精准人声提取技术：**
+            **视频说话人分离技术：**
             1. 用户上传SRT字幕文件（可选）
             2. 系统将ASR识别结果与字幕时间戳进行对齐
-            3. 基于精准的时间戳提取各角色人声
+            3. 基于精准的时间戳提取各角色视频片段
             4. 使用VAD技术校正时间戳偏差
             
             **处理流程：**
-            1. 在实例上准备音频/视频文件或文件夹
-            2. 指定文件路径或文件夹路径（默认为/root/autodl-tmp/input）
+            1. 在实例上准备视频文件或文件夹
+            2. 指定文件路径或文件夹路径
             3. 上传字幕文件（可选）
-            4. 指定保存路径（默认为/root/autodl-tmp/output）
+            4. 指定保存路径
             5. 调整参数：
                - **合并阈值**：控制相邻相同说话人片段的合并程度
                - **最短时长**：舍弃总时长低于此值的说话人输出
@@ -730,11 +718,9 @@ with gr.Blocks(title="说话人分离工具") as demo:
                - **启用精准时间戳**：校正时间戳偏差（推荐）
             6. 点击开始处理按钮
             7. 结果将保存在指定目录下的日期文件夹中，包含：
-               - 各角色的纯人声音频片段
-               - 合并后的完整角色音频
+               - 各角色的视频片段
+               - 合并后的完整角色视频
                - 时间戳对齐信息文件
-            
-            系统会自动检测并舍弃无人声的BGM片段，只保留包含人声的部分
             """)
     
     submit_btn.click(

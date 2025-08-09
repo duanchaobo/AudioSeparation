@@ -1,13 +1,12 @@
-# AudioSeparation
 # 1. 说明
-这是基于开源的 AudioSeparationGUI-main(https://github.com/lukeewin/AudioSeparationGUI) 实现的说话人分离的 gradio webui 项目\
+这是基于开源的 FunASR 实现的说话人分离的 gradio webui 项目\
 要求 python version >= 3.8 \
 支持运行在 Windows、MacOS、Linux 系统 \
 热词功能，在当前路径下的 hotwords.txt 中写入热词，每个热词一行
 # 2. 安装
 执行下面命令来安装依赖
 ```shell
-pip install -U funasr modelscope ffmpeg-python pydub
+pip install -r requirements.txt
 ```
 此外还需要安装torch和ffmpeg
 # 4. 功能
@@ -20,4 +19,10 @@ pip install -U funasr modelscope ffmpeg-python pydub
 执行下面程序，会自动下载模型到当前用户 .cache/modelscope/hub/models/iic/ 目录中
 ```shell
 python download_model.py
+```
+
+# 6. 启动 Webui
+执行下面程序，会启动音频分离的 Webui
+```shell
+python audioseparation.py
 ```
